@@ -1,0 +1,418 @@
+# 环境变量和配置文件
+# Environment variables and config files
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+config.json
+
+# Python 相关
+# Python related
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 虚拟环境
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.env/
+
+# 测试和覆盖率
+# Testing and coverage
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# 翻译文件
+# Translation files
+*.mo
+*.pot
+
+# Django 相关 (如果有)
+# Django related (if any)
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask 相关 (如果有)
+# Flask related (if any)
+instance/
+.webassets-cache
+
+# Scrapy 相关 (如果有)
+# Scrapy related (if any)
+.scrapy
+
+# Sphinx 文档
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+# PyBuilder related
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+# pyenv related
+.python-version
+
+# pipenv
+# pipenv related
+Pipfile.lock
+
+# poetry
+# poetry related
+poetry.lock
+
+# pdm
+# pdm related
+.pdm.toml
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath
+*.sage.py
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# mkdocs
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# pytype
+.pytype/
+
+# Cython
+cython_debug/
+
+# Node.js 和 Vue 相关
+# Node.js and Vue related
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# 运行时数据
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage 目录
+# Coverage directory
+.nyc_output
+
+# Grunt 中间和输出目录
+# Grunt intermediate and output directories  
+.grunt
+
+# Bower 依赖目录
+# Bower dependency directory
+bower_components
+
+# node-waf 配置
+# node-waf configuration
+.lock-wscript
+
+# 编译的二进制插件
+# Compiled binary addons
+build/Release
+
+# 依赖目录
+# Dependency directories
+jspm_packages/
+
+# Snowpack 依赖目录
+# Snowpack dependency directory
+web_modules/
+
+# TypeScript 缓存
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm 缓存目录
+# Optional npm cache directory
+.npm
+
+# Optional eslint 缓存
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint 缓存
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle 缓存
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL 历史
+# Optional REPL history
+.node_repl_history
+
+# 打包器的输出目录
+# Output of 'npm pack'
+*.tgz
+
+# Yarn 完整性文件
+# Yarn integrity file
+.yarn-integrity
+
+# dotenv 环境变量文件
+# dotenv environment variable files (keep .env-template)
+.env.development.local
+.env.test.local
+.env.production.local
+
+# parcel-bundler 缓存
+# parcel-bundler cache
+.cache
+.parcel-cache
+
+# Next.js 构建输出
+# Next.js build output
+.next
+out
+
+# Nuxt.js 构建/生成输出
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby 文件
+# Gatsby files
+.cache/
+public
+
+# vue-press 构建输出
+# vue-press build output
+.vuepress/dist
+
+# vue-press v2.x 临时和缓存目录
+# vue-press v2.x temp and cache directories
+.temp
+
+# Docusaurus 缓存和生成文件
+# Docusaurus cache and generated files
+.docusaurus
+
+# Serverless 目录
+# Serverless directories
+.serverless/
+
+# FuseBox 缓存
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local 文件
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS 端口文件
+# TernJS port file
+.tern-port
+
+# Stores VSCode 版本
+# Stores VSCode versions
+.vscode-test
+
+# yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# IDE 和编辑器
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统生成的文件
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows 相关
+# Windows related
+*.stackdump
+
+# 日志文件
+# Log files
+*.log
+logs/
+*.log.*
+
+# 临时文件
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# 数据库文件
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker 相关
+# Docker related
+.dockerignore
+docker-compose.override.yml
+
+# Azure 相关
+# Azure related
+.azure/
+
+# 部署相关
+# Deployment related
+.deployment
+.secrets
+
+# 备份文件
+# Backup files
+*.bak
+*.backup
+
+# 缓存目录
+# Cache directories
+.cache/
+cache/
+
+# 编译输出
+# Compiled output
+*.o
+*.a
+*.lib
+*.dll
+*.exe
+
+# 包文件
+# Package files
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# 用户上传的文件 (根据业务需要调整)
+# User uploaded files (adjust based on business needs)
+uploads/
+files/
+media/
+
+# 静态文件构建输出 (前端构建后的文件)
+# Static files build output (frontend build files)
+backend/app/static/
+
+# 测试文件和数据
+# Test files and data
+test_data/
+fixtures/
+mock_data/
+
+# 性能分析文件
+# Profiling files
+*.prof
+
+# 依赖锁文件 (根据项目需要)
+# Dependency lock files (based on project needs)
+# poetry.lock
+# Pipfile.lock
+# package-lock.json
+# yarn.lock
+
+# AI/ML 模型文件 (如果有大文件)
+# AI/ML model files (if any large files)
+*.model
+*.pkl
+*.joblib
+
+# Redis 持久化文件
+# Redis persistence files
+dump.rdb
+
+# 证书文件
+# Certificate files
+*.crt
+*.csr
+
+# 监控和分析
+# Monitoring and analytics
+.nyc_output/
+coverage/ 

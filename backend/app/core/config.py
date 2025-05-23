@@ -275,17 +275,24 @@ if settings.LANGSMITH_TRACING and settings.LANGSMITH_API_KEY:
 
 # 配置Sentry (如果提供DSN)
 # Configure Sentry (if DSN provided)
-if settings.SENTRY_DSN:
-    import sentry_sdk
-    from sentry_sdk.integrations.fastapi import FastApiIntegration
-    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
-    
-    sentry_sdk.init(
-        dsn=settings.SENTRY_DSN,
-        integrations=[
-            FastApiIntegration(),
-            SqlalchemyIntegration(),
-        ],
-        traces_sample_rate=0.1 if settings.is_production else 1.0,
-        environment=settings.ENVIRONMENT,
-    ) 
+if settings.SENTRY_DSN and settings.SENTRY_DSN != "https://xxx@sentry.io/xxx":
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+        
+        sentry_sdk.init(
+            dsn=settings.SENTRY_DSN,
+            integrations=[
+                FastApiIntegration(),
+                SqlalchemyIntegration(),
+            ],
+            traces_sample_rate=0.1 if settings.is_production else 1.0,
+            environment=settings.ENVIRONMENT,
+        )
+        print("✅ Sentry initialized successfully / Sentry初始化成功")
+    except Exception as e:
+        print(f"⚠️ Sentry initialization failed (optional): {e}")
+        print("📝 Continuing without Sentry monitoring / 继续运行但不使用Sentry监控")
+else:
+    print("📝 Sentry monitoring disabled (no valid DSN) / Sentry监控已禁用") 
