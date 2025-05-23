@@ -64,7 +64,7 @@ class ChatHistory(Base):
     
     # 消息元数据
     # Message metadata
-    metadata: Mapped[dict] = mapped_column(JSON, nullable=True)  # 额外的元数据信息
+    message_metadata: Mapped[dict] = mapped_column(JSON, nullable=True)  # 额外的元数据信息
     attachments: Mapped[dict] = mapped_column(JSON, nullable=True)  # 附件信息
     
     # Tool调用相关 (LangChain工具调用)
@@ -142,7 +142,7 @@ class ChatHistory(Base):
             "role": self.role,
             "message_type": self.message_type,
             "content": self.content,
-            "metadata": self.metadata,
+            "metadata": self.message_metadata,
             "attachments": self.attachments,
             "tool_call_id": self.tool_call_id,
             "tool_name": self.tool_name,
@@ -174,7 +174,7 @@ class ChatHistory(Base):
         return {
             "role": self.role,
             "content": self.content,
-            "metadata": self.metadata or {}
+            "metadata": self.message_metadata or {}
         }
     
     def has_tool_call(self) -> bool:

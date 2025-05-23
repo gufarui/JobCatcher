@@ -1,6 +1,6 @@
 """
-LangGraph 多Agent架构包
-Multi-Agent architecture package using LangGraph for JobCatcher
+AI Agent包
+AI Agents package
 """
 
 from app.agents.base import BaseAgent, AgentState

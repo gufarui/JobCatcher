@@ -1,0 +1,122 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# JobCatcher 主要开发规则总览
+
+## 📋 项目基础
+JobCatcher 是一个低成本、云平台部署的求职辅助平台，详细规范请参考 [开发文档.md](mdc:开发文档.md)。
+
+## 🚫 严格禁止事项
+1. **不得更改开发文档** - [开发文档.md](mdc:开发文档.md) 是唯一权威标准
+2. **不得超出功能范围** - 只能实现文档中明确定义的功能
+3. **不得添加额外接口** - API设计严格遵循第10.2节规范
+4. **不得使用非指定技术** - 技术栈固定为第3节所列
+
+## ✅ 开发强制要求
+
+### 代码规范
+- **双语注释**: 所有代码必须包含中英文双语注释
+- **前端英文**: 所有UI文本必须使用英文
+- **错误处理**: 每个API调用都要有完整错误处理
+- **测试驱动**: 每个模块完成后必须进行测试
+
+### 技术要求
+- **Claude 4**: Agent功能必须查看官方文档 https://docs.anthropic.com/en/home
+- **最新依赖**: 安装前必须联网搜索最新稳定版本
+- **官方文档**: 使用context7或官网查看文档后编码
+
+## 🏗️ 核心架构组件
+
+### 后端 (FastAPI)
+参考文件位置：[backend/](mdc:backend)
+- **LangGraph多Agent**: JobSearch + ResumeCritic + SkillHeatmap + ResumeRewrite
+- **Claude 4集成**: Tool Calling + Document处理 + RAG检索
+- **Azure服务**: AI Search + Blob Storage + PostgreSQL
+- **定时任务**: 6小时职位刷新 + 过期清理
+
+### 前端 (Vue 3)
+参考文件位置：[frontend/](mdc:frontend)
+- **页面设计**: 首页(Google OAuth) + 主页(左栏职位/右栏聊天)
+- **核心组件**: SearchBar + JobCard + ChatBox + HeatmapChart
+- **状态管理**: Pinia管理用户/职位/聊天状态
+- **实时通信**: WebSocket聊天 + 文件上传
+
+## 🔧 外部服务集成
+
+### 必需API服务 (全部免费层)
+根据 [.env-template](mdc:.env-template) 配置：
+- **Anthropic Claude 4**: `ANTHROPIC_API_KEY` - $5试用额度
+- **Apify StepStone**: `APIFY_TOKEN` - $5平台信用  
+- **SerpAPI Google Jobs**: `SERPAPI_KEY` - 100次/月
+- **Azure AI Search**: `AZURE_SEARCH_ENDPOINT/KEY` - 3索引免费
+- **Google OAuth**: `GOOGLE_CLIENT_ID/SECRET` - 100用户免费
+
+### 数据采集流程
+1. **Apify**: StepStone德国职位数据
+2. **SerpAPI**: Google Jobs(LinkedIn+Indeed)
+3. **缓存策略**: 6小时刷新，成本控制
+4. **RAG索引**: Azure AI Search向量化存储
+
+## 📊 Agent工作流设计
+
+### LangGraph DAG架构
+```python
+# 工作流控制 - Workflow control
+JobSearchAgent → ResumeCriticAgent → SkillHeatmapAgent
+                      ↓
+               ResumeRewriteAgent (条件触发)
+```
+
+### Agent功能分工
+1. **JobSearchAgent**: 调用外部API + 本地RAG检索
+2. **ResumeCriticAgent**: 简历解析 + 匹配度评分 + 排序推荐  
+3. **SkillHeatmapAgent**: TF-IDF技能聚合 + Chart.js渲染
+4. **ResumeRewriteAgent**: Claude生成Markdown + PDF转换
+
+## 🎯 关键实现细节
+
+### 简历处理Pipeline
+```python
+# 基于开发文档6.2节示例
+# Based on development doc section 6.2 example
+PDF → base64 → Claude document API → 结构化数据 → RAG匹配
+```
+
+### 前端用户交互
+- **左栏**: 搜索框 + 职位卡片列表(可点击外链)
+- **右栏**: 聊天界面 + 简历上传 + 清除按钮
+- **技能图**: Chart.js雷达图/热力图展示
+
+### 数据持久化
+- **PostgreSQL**: 用户、聊天记录、简历元数据
+- **Blob Storage**: PDF文件存储 `cv/{user_id}/{ts}.pdf`
+- **AI Search**: 职位描述向量索引
+
+## 🚀 部署和监控
+
+### 容器化部署
+- **单镜像**: 前端静态文件 + FastAPI后端
+- **Azure App Service**: 环境变量配置
+- **定时任务**: APScheduler管理数据刷新
+
+### 成本控制
+- **API缓存**: 减少外部调用频率
+- **免费额度**: 严格监控各服务用量
+- **错误处理**: 优雅降级和重试机制
+
+## 📝 开发进度跟踪
+每次开发完成后，更新项目进度文档记录：
+- ✅ 已完成的模块和功能
+- 🔄 正在进行的工作
+- ⭐ 待完成的任务
+- 🐛 发现的问题和解决方案
+
+## 📚 必读文档链接
+- [开发文档.md](mdc:开发文档.md) - 完整开发手册(主要参考)
+- [Claude 4 官方文档](mdc:https:/docs.anthropic.com/en/home) - Agent开发必读
+- [项目架构规则](mdc:.cursor/rules/project-architecture.mdc)
+- [Claude Agent实现规则](mdc:.cursor/rules/claude4-agent-implementation.mdc)
+- [前端开发规则](mdc:.cursor/rules/frontend-development.mdc)
+- [API服务集成规则](mdc:.cursor/rules/api-external-services.mdc)

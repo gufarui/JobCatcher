@@ -4,8 +4,8 @@ Application configuration for JobCatcher
 """
 
 import os
-from typing import List, Optional
-from pydantic import Field
+from typing import List, Optional, Union
+from pydantic import Field, validator
 from pydantic_settings import BaseSettings
 
 
@@ -23,10 +23,20 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = Field(default="INFO", description="日志级别 / Log level")
     
     # CORS配置 - CORS Configuration
-    CORS_ORIGINS: List[str] = Field(
+    CORS_ORIGINS: Union[List[str], str] = Field(
         default=["http://localhost:3000", "http://localhost:5173"],
         description="允许的跨域源 / Allowed CORS origins"
     )
+    
+    @validator('CORS_ORIGINS', pre=True)
+    def parse_cors_origins(cls, v):
+        """
+        解析CORS_ORIGINS，支持字符串和列表格式
+        Parse CORS_ORIGINS to support both string and list formats
+        """
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
     
     # ==============================================
     # LLM配置 - Language Model Configuration
@@ -34,6 +44,18 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = Field(
         default="demo_key", 
         description="Anthropic Claude 4 API密钥 / Anthropic Claude 4 API key"
+    )
+    
+    ANTHROPIC_BASE_URL: str = Field(
+        default="https://claude.cloudapi.vip",
+        description="Anthropic API基础URL / Anthropic API base URL"
+    )
+    
+    CLAUDE_TEMPERATURE: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Claude模型温度设置 (0.0-1.0) / Claude model temperature setting"
     )
     
     # ==============================================
@@ -72,9 +94,32 @@ class Settings(BaseSettings):
         description="PDFMonkey PDF生成服务密钥 / PDFMonkey PDF generation service key"
     )
     
+    PDFMONKEY_BASE_URL: str = Field(
+        default="https://api.pdfmonkey.io/api/v1",
+        description="PDFMonkey API基础URL / PDFMonkey API base URL"
+    )
+    
     # ==============================================
     # Azure云服务配置 - Azure Cloud Service Configuration
     # ==============================================
+    
+    # Azure OpenAI配置 - Azure OpenAI Configuration
+    AZURE_OPENAI_ENDPOINT: str = Field(
+        default="https://demo.openai.azure.com", 
+        description="Azure OpenAI端点 / Azure OpenAI endpoint"
+    )
+    
+    AZURE_OPENAI_API_KEY: str = Field(
+        default="demo_key", 
+        description="Azure OpenAI API密钥 / Azure OpenAI API key"
+    )
+    
+    AZURE_OPENAI_API_VERSION: str = Field(
+        default="2024-02-01", 
+        description="Azure OpenAI API版本 / Azure OpenAI API version"
+    )
+    
+    # Azure AI Search配置 - Azure AI Search Configuration
     AZURE_SEARCH_ENDPOINT: str = Field(
         default="https://demo.search.windows.net", 
         description="Azure AI Search端点 / Azure AI Search endpoint"
@@ -90,6 +135,7 @@ class Settings(BaseSettings):
         description="Azure搜索索引名称 / Azure search index name"
     )
     
+    # Azure Blob Storage配置 - Azure Blob Storage Configuration
     AZURE_STORAGE_CONNECTION_STRING: str = Field(
         default="DefaultEndpointsProtocol=https;AccountName=demo;AccountKey=demo;EndpointSuffix=core.windows.net", 
         description="Azure Blob存储连接字符串 / Azure Blob Storage connection string"
@@ -237,7 +283,7 @@ if settings.SENTRY_DSN:
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         integrations=[
-            FastApiIntegration(auto_enable=True),
+            FastApiIntegration(),
             SqlalchemyIntegration(),
         ],
         traces_sample_rate=0.1 if settings.is_production else 1.0,

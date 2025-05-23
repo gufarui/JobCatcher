@@ -1,0 +1,153 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 外部API和服务集成规则
+
+## SaaS服务优先级
+根据 [开发文档.md](mdc:开发文档.md) 第8节，所有外部服务都必须选择**零审批/免费层**的SaaS：
+
+## 核心服务配置
+
+### 1. LLM服务 - Anthropic Claude 4
+- **服务**: Claude 4 sonnet @ Anthropic  
+- **免费额度**: $5试用 + 按量计费
+- **申请链接**: https://www.anthropic.com/api
+- **环境变量**: `ANTHROPIC_API_KEY`
+- **使用要求**: 
+  - 必须查看官方文档: https://docs.anthropic.com/en/home
+  - 使用最新的claude-sonnet-4-20250514模型,模型名称不能变动！
+  - 支持Tool Calling和document输入格式
+
+### 2. 职位数据源
+
+#### StepStone (德国市场)
+- **服务**: Apify StepStone Scraper
+- **免费额度**: $5平台信用  
+- **申请链接**: https://apify.com/jupri/stepstone-scraper
+- **环境变量**: `APIFY_TOKEN`
+- **调用示例**:
+```bash
+curl -X POST "https://api.apify.com/v2/acts/apify~stepstone-scraper/run-sync-get-dataset-items?token=$APIFY_TOKEN" \
+ -d '{"search":"python", "location":"Berlin"}'
+```
+
+#### Google Jobs (LinkedIn + Indeed)
+- **服务**: SerpAPI Google Jobs
+- **免费额度**: 100 requests/月
+- **申请链接**: https://serpapi.com/google-jobs-api  
+- **环境变量**: `SERPAPI_KEY`
+- **调用示例**:
+```bash
+curl "https://serpapi.com/search.json?q=python+jobs&engine=google_jobs&api_key=$SERPAPI_KEY"
+```
+
+### 3. 搜索和存储服务
+
+#### Azure AI Search
+- **服务**: Azure AI Search Free
+- **免费额度**: 3索引 / 50MB
+- **申请链接**: https://learn.microsoft.com/azure/search/search-sku-tier
+- **环境变量**: `AZURE_SEARCH_ENDPOINT`, `AZURE_SEARCH_KEY`
+- **用途**: 职位文档向量化和语义检索
+
+#### Azure Blob Storage  
+- **环境变量**: `AZURE_STORAGE_CONNECTION_STRING`
+- **用途**: 简历文件存储 (`cv/{user_id}/{ts}.pdf`)
+
+#### Azure PostgreSQL
+- **环境变量**: `DATABASE_URL`
+- **用途**: 用户数据、聊天历史、简历元数据
+
+### 4. 认证服务 - Google OAuth
+- **服务**: Google OAuth 2 Testing
+- **免费额度**: ≤100用户 (无安全评估)
+- **申请链接**: https://console.cloud.google.com/apis/credentials
+- **环境变量**: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+- **会话管理**: `SESSION_SECRET`
+
+## API调用最佳实践
+
+### 1. 错误处理标准
+```python
+import httpx
+import asyncio
+
+# API调用错误处理模板
+# API call error handling template
+async def call_external_api(url, params):
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error {e.response.status_code}: {e.response.text}")
+            raise
+        except httpx.TimeoutException:
+            logger.error("API call timeout")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
+            raise
+```
+
+### 2. 免费额度管理
+- **Anthropic Claude 4**: 监控$5试用额度使用情况
+- **SerpAPI**: 每月100次请求限制，需要缓存结果
+- **Apify**: $5平台信用，合理安排抓取频率
+- **Azure服务**: 监控免费层限制
+
+### 3. 缓存策略
+```python
+# 职位数据缓存6小时
+# Job data cache for 6 hours
+@scheduler.scheduled_job('interval', hours=6)
+async def refresh_jobs_cache():
+    # 拉取新数据前检查API额度
+    # Check API quota before fetching new data
+    await fetch_stepstone_jobs()
+    await fetch_google_jobs()
+    await update_search_index()
+```
+
+### 4. 定时任务管理
+参考 [开发文档.md](mdc:开发文档.md) 第14节：
+- 每6小时刷新职位数据  
+- 每日02:00 UTC清理过期职位
+- 监控外部链接有效性
+
+## 环境变量配置
+参考 [.env-template](mdc:.env-template) 确保所有必需变量已配置：
+
+```env
+# LLM服务
+# LLM Service
+ANTHROPIC_API_KEY=sk-...
+
+# 职位数据源  
+# Job Data Sources
+APIFY_TOKEN=apify_api_...
+SERPAPI_KEY=...
+
+# Azure服务
+# Azure Services  
+AZURE_SEARCH_ENDPOINT=https://....search.windows.net
+AZURE_SEARCH_KEY=...
+AZURE_STORAGE_CONNECTION_STRING=...
+DATABASE_URL=postgresql://...
+
+# OAuth认证
+# OAuth Authentication
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+SESSION_SECRET=...
+```
+
+## 成本控制策略
+1. **优先使用缓存**: 避免重复API调用
+2. **批量处理**: 合并相似的API请求  
+3. **监控用量**: 设置用量告警阈值
+4. **渐进式扩展**: 先验证功能再扩大使用规模
+5. **错误重试**: 使用指数退避策略

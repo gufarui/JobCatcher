@@ -203,11 +203,127 @@ class Resume(Base):
             "overall": self.overall_score or 0,
             "technical": self.technical_score or 0,
             "experience": self.experience_score or 0,
-            "education": self.education_score or 0,
-            "average": (
-                (self.overall_score or 0) + 
-                (self.technical_score or 0) + 
-                (self.experience_score or 0) + 
-                (self.education_score or 0)
-            ) / 4
-        } 
+            "education": self.education_score or 0
+        }
+
+
+# ================== Pydantic响应模型 / Pydantic Response Models ==================
+
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
+from uuid import UUID
+
+
+class ResumeDto(BaseModel):
+    """
+    简历DTO模型
+    Resume DTO model
+    """
+    id: str = Field(..., description="简历ID / Resume ID")
+    user_id: int = Field(..., description="用户ID / User ID")
+    title: str = Field(..., description="简历标题 / Resume title")
+    filename: str = Field(..., description="文件名 / Filename")
+    file_size: Optional[int] = Field(None, description="文件大小 / File size")
+    file_type: Optional[str] = Field(None, description="文件类型 / File type")
+    blob_url: Optional[str] = Field(None, description="文件URL / File URL")
+    
+    # 个人信息 / Personal information
+    full_name: Optional[str] = Field(None, description="姓名 / Full name")
+    email: Optional[str] = Field(None, description="邮箱 / Email")
+    phone: Optional[str] = Field(None, description="电话 / Phone")
+    location: Optional[str] = Field(None, description="地址 / Location")
+    
+    # 职业信息 / Professional information
+    current_position: Optional[str] = Field(None, description="当前职位 / Current position")
+    years_of_experience: Optional[int] = Field(None, description="工作年限 / Years of experience")
+    desired_position: Optional[str] = Field(None, description="期望职位 / Desired position")
+    desired_salary_min: Optional[int] = Field(None, description="期望最低薪资 / Desired minimum salary")
+    desired_salary_max: Optional[int] = Field(None, description="期望最高薪资 / Desired maximum salary")
+    
+    # 结构化数据 / Structured data
+    skills: Optional[Dict[str, Any]] = Field(None, description="技能 / Skills")
+    languages: Optional[Dict[str, Any]] = Field(None, description="语言 / Languages")
+    education: Optional[Dict[str, Any]] = Field(None, description="教育背景 / Education")
+    work_experience: Optional[Dict[str, Any]] = Field(None, description="工作经历 / Work experience")
+    projects: Optional[Dict[str, Any]] = Field(None, description="项目经验 / Projects")
+    certifications: Optional[Dict[str, Any]] = Field(None, description="认证 / Certifications")
+    
+    # AI分析结果 / AI analysis results
+    strength_summary: Optional[str] = Field(None, description="优势总结 / Strength summary")
+    improvement_suggestions: Optional[str] = Field(None, description="改进建议 / Improvement suggestions")
+    
+    # 评分 / Scores
+    overall_score: Optional[float] = Field(None, description="总体评分 / Overall score")
+    technical_score: Optional[float] = Field(None, description="技术评分 / Technical score")
+    experience_score: Optional[float] = Field(None, description="经验评分 / Experience score")
+    education_score: Optional[float] = Field(None, description="教育评分 / Education score")
+    
+    # 状态 / Status
+    version: int = Field(1, description="版本号 / Version")
+    is_primary: bool = Field(True, description="是否主要简历 / Is primary")
+    is_public: bool = Field(False, description="是否公开 / Is public")
+    is_parsed: bool = Field(False, description="是否已解析 / Is parsed")
+    is_analyzed: bool = Field(False, description="是否已分析 / Is analyzed")
+    parsing_error: Optional[str] = Field(None, description="解析错误 / Parsing error")
+    
+    # 时间戳 / Timestamps
+    uploaded_at: Optional[datetime] = Field(None, description="上传时间 / Uploaded time")
+    parsed_at: Optional[datetime] = Field(None, description="解析时间 / Parsed time")
+    analyzed_at: Optional[datetime] = Field(None, description="分析时间 / Analyzed time")
+    updated_at: Optional[datetime] = Field(None, description="更新时间 / Updated time")
+    
+    class Config:
+        from_attributes = True
+
+
+class ResumeAnalysis(BaseModel):
+    """
+    简历分析结果模型
+    Resume analysis result model
+    """
+    resume_id: str = Field(..., description="简历ID / Resume ID")
+    analysis_type: str = Field(..., description="分析类型 / Analysis type")
+    
+    # 评分详情 / Score details
+    overall_score: float = Field(..., ge=0, le=100, description="总体评分 / Overall score")
+    technical_score: float = Field(..., ge=0, le=100, description="技术评分 / Technical score")
+    experience_score: float = Field(..., ge=0, le=100, description="经验评分 / Experience score")
+    education_score: float = Field(..., ge=0, le=100, description="教育评分 / Education score")
+    
+    # 分析结果 / Analysis results
+    strengths: List[str] = Field(default=[], description="优势列表 / Strengths")
+    weaknesses: List[str] = Field(default=[], description="不足列表 / Weaknesses")
+    recommendations: List[str] = Field(default=[], description="建议列表 / Recommendations")
+    
+    # 技能分析 / Skills analysis
+    technical_skills: List[str] = Field(default=[], description="技术技能 / Technical skills")
+    soft_skills: List[str] = Field(default=[], description="软技能 / Soft skills")
+    missing_skills: List[str] = Field(default=[], description="缺失技能 / Missing skills")
+    
+    # 匹配分析（针对特定职位时）/ Match analysis (for specific position)
+    target_position: Optional[str] = Field(None, description="目标职位 / Target position")
+    match_percentage: Optional[float] = Field(None, ge=0, le=100, description="匹配度 / Match percentage")
+    
+    # 分析时间 / Analysis timestamp
+    analyzed_at: datetime = Field(..., description="分析时间 / Analyzed time")
+
+
+class ResumeResponse(BaseModel):
+    """
+    单个简历响应模型
+    Single resume response model
+    """
+    resume: ResumeDto = Field(..., description="简历信息 / Resume information")
+    analysis: Optional[ResumeAnalysis] = Field(None, description="分析结果 / Analysis result")
+
+
+class ResumeListResponse(BaseModel):
+    """
+    简历列表响应模型
+    Resume list response model
+    """
+    resumes: List[ResumeDto] = Field(..., description="简历列表 / Resume list")
+    total: int = Field(..., description="总数量 / Total count")
+    page: int = Field(..., description="当前页码 / Current page")
+    page_size: int = Field(..., description="每页数量 / Page size")
+    has_more: bool = Field(..., description="是否有更多 / Has more") 

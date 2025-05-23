@@ -1,0 +1,148 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Claude 4 Agent实现规则
+
+## Claude 4官方文档要求
+**重要**: 所有和Agent相关的功能编写必须查看Claude 4官方文档
+- 官方文档地址: https://docs.anthropic.com/en/home
+- 必须使用最新的API特性和最佳实践
+
+## 简历处理流程
+
+### 1. 简历解析 (Resume Parsing)
+基于开发文档示例代码实现：
+```python
+import anthropic
+import base64
+import httpx
+
+# 简历文档编码和发送给Claude 4
+# Resume document encoding and sending to Claude 4
+client = anthropic.Anthropic()
+message = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    messages=[{
+        "role": "user", 
+        "content": [{
+            "type": "document",
+            "source": {
+                "type": "base64",
+                "media_type": "application/pdf", 
+                "data": pdf_data
+            }
+        }]
+    }]
+)
+```
+
+### 2. Tool Calling实现
+```python
+from langchain_anthropic import ChatAnthropic
+
+# Claude 4工具绑定
+# Claude 4 tool binding
+llm = ChatAnthropic(model="claude-4-opus").bind_tools([
+    parse_resume_tool,
+    retriever_tool, 
+    pdfmonkey_tool
+])
+```
+
+## LangGraph Agent架构
+
+### 多Agent工作流
+参考 [开发文档.md](mdc:开发文档.md) 第5节和第10.3节：
+
+```python
+from langgraph.graph import StateGraph
+
+# Agent工作流状态图
+# Agent workflow state graph  
+sg = StateGraph(memory=ConversationMemory())
+sg.add_node("search", JobSearchAgent)
+sg.add_node("parse", ParseResumeTool)
+sg.add_node("critic", ResumeCriticAgent) 
+sg.add_node("rewrite", ResumeRewriteAgent)
+
+# 条件边控制流程
+# Conditional edges control flow
+sg.add_conditional_edges("critic", {
+    "rewrite": lambda s: s.user_accept_rewrite,
+    "end": lambda s: not s.user_accept_rewrite,
+})
+```
+
+### Agent功能定义
+
+1. **JobSearchAgent**: 
+   - 调用工具: `web_search_20250305`, `query_local_jobs`
+   - 功能: 汇聚线上和本地职位，写入jobs_cache
+
+2. **ResumeCriticAgent**:
+   - 调用工具: `similarity_search`, `aggregate_skills` 
+   - 功能: 匹配度评分，排序20条岗位并发到前端
+
+3. **SkillHeatmapAgent**:
+   - 无外部工具调用 (仅内部逻辑)
+   - 功能: 对同领域JD做TF-IDF聚合生成技能热点
+
+4. **ResumeRewriteAgent**:
+   - 调用工具: `write_pdf`
+   - 功能: Claude生成Markdown，调PDFMonkey返回下载URL
+
+## RAG检索系统
+
+### Azure AI Search集成
+- 使用Azure AI Search免费层 (3索引/50MB)
+- 职位数据向量化存储
+- 语义检索匹配用户简历
+
+### 检索工具实现
+```python
+class JDQueryReq(BaseModel): 
+    query: str
+
+# 检索工具绑定
+# Retrieval tool binding
+retriever_tool = retriever.as_tool(name="query_jobs")
+```
+
+## 数据采集与处理
+
+### 1. 多源职位数据
+- **Apify StepStone Scraper**: 德国职位数据
+- **SerpAPI Google Jobs**: 包含LinkedIn和Indeed
+- 数据格式统一为JSON并写入向量索引
+
+### 2. 定时任务 (Scheduled Tasks)
+- 每6小时刷新职位数据
+- 清理过期职位链接
+- 维护索引数据质量
+
+### 3. 性能优化
+- API调用结果缓存到数据库
+- 减少外部服务调用频率
+- 控制成本在免费额度内
+
+## 简历匹配与改写能力
+
+### 匹配度分析
+1. 使用`similarity_search`工具进行语义相似度比较
+2. 返回职位匹配度报告
+3. 指出缺失技能或经验GAP
+
+### 个性化改写
+1. 基于职位描述上下文和用户原始简历
+2. Claude 4生成定制化Markdown简历文档  
+3. 通过PDFMonkey转换为PDF格式
+4. 聊天框返回下载链接
+
+## 实现注意事项
+1. 所有Claude 4调用都要包含适当的错误处理
+2. 工具调用结果要验证和清理
+3. 用户交互要提供清晰的状态反馈
+4. 遵循免费API额度限制

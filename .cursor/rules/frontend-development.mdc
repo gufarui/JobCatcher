@@ -1,0 +1,358 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 前端开发规则
+
+## Vue 3技术栈
+基于 [开发文档.md](mdc:开发文档.md) 第3节和第11节规范：
+
+### 核心技术
+- **框架**: Vue 3 + Vite + Pinia + Element Plus
+- **图表库**: Chart.js (热点图 & 雷达图)
+- **构建工具**: Vite
+- **状态管理**: Pinia
+- **UI组件**: Element Plus
+- **样式**: CSS3 + 响应式设计
+
+### 项目结构
+参考 [frontend/](mdc:frontend) 目录结构：
+```
+/src
+  ├─ components/     # 可复用组件
+  │   ├─ SearchBar.vue      # 职位搜索栏
+  │   ├─ JobCard.vue        # 职位卡片
+  │   ├─ ChatBox.vue        # AI聊天框
+  │   └─ HeatmapChart.vue   # 技能热点图
+  ├─ views/          # 页面视图
+  │   ├─ Home.vue           # 首页
+  │   └─ App.vue            # 主应用页面
+  ├─ store/          # Pinia状态管理
+  │   └─ user.ts            # 用户状态
+  ├─ api/            # API调用
+  │   └─ index.ts           # 接口定义
+  ├─ router/         # 路由配置
+  └─ styles/         # 样式文件
+```
+
+## 页面设计要求
+
+### 1. 首页 (Home.vue)
+**设计风格**：
+- 全屏动态背景 + 艺术字体Logo
+- 体验偏艺术/极简风格
+- 展示一句简短的项目功能简介
+- 右上角**"Continue with Google"**按钮
+
+**实现要点**：
+```vue
+<template>
+  <!-- 所有UI文本必须使用英文 -->
+  <!-- All UI text must be in English -->
+  <div class="home-container">
+    <div class="hero-section">
+      <h1 class="logo">JobCatcher</h1>
+      <p class="tagline">AI-Powered Job Search & Resume Enhancement</p>
+      <el-button 
+        type="primary" 
+        class="auth-button"
+        @click="handleGoogleAuth"
+      >
+        Continue with Google
+      </el-button>
+    </div>
+  </div>
+</template>
+```
+
+### 2. 主应用页面 (App.vue)  
+**布局结构**：
+- **左栏**: 职位检索 + 展示 (SearchBar + JobCard列表)
+- **右栏**: AI聊天助手 (ChatBox + 文件上传)
+
+**关键功能**：
+```vue
+<template>
+  <div class="app-layout">
+    <!-- 左栏：职位搜索与展示 -->
+    <!-- Left panel: Job search and display -->
+    <div class="left-panel">
+      <SearchBar @search="handleSearch" />
+      <JobCard 
+        v-for="job in jobs" 
+        :key="job.id"
+        :job="job"
+        @click="openJobUrl"
+      />
+    </div>
+    
+    <!-- 右栏：AI聊天助手 -->  
+    <!-- Right panel: AI chat assistant -->
+    <div class="right-panel">
+      <ChatBox 
+        :messages="messages"
+        @send-message="handleMessage"
+        @upload-resume="handleResumeUpload"
+        @clear-chat="handleClearChat"
+      />
+    </div>
+  </div>
+</template>
+```
+
+## 组件开发规范
+
+### SearchBar.vue
+**功能**：
+- 职位名称/关键技能输入框
+- 3个下拉过滤项：Location, Salary Range, Job Type
+- 搜索按钮触发API调用
+
+```vue
+<template>
+  <el-form :model="searchForm" class="search-bar">
+    <!-- 主搜索框 -->
+    <!-- Main search input -->
+    <el-input
+      v-model="searchForm.query"
+      placeholder="Enter job title or skills..."
+      class="search-input"
+    />
+    
+    <!-- 过滤选项 -->  
+    <!-- Filter options -->
+    <el-select v-model="searchForm.location" placeholder="Location">
+      <el-option label="Berlin" value="berlin" />
+      <el-option label="Munich" value="munich" />
+    </el-select>
+    
+    <el-select v-model="searchForm.salaryRange" placeholder="Salary Range">
+      <el-option label="€40k-60k" value="40000-60000" />
+      <el-option label="€60k-80k" value="60000-80000" />
+    </el-select>
+    
+    <el-select v-model="searchForm.jobType" placeholder="Job Type">
+      <el-option label="Full-time" value="fulltime" />
+      <el-option label="Part-time" value="parttime" />
+    </el-select>
+    
+    <el-button type="primary" @click="handleSearch">Search Jobs</el-button>
+  </el-form>
+</template>
+```
+
+### JobCard.vue
+**功能**：
+- 可滚动翻页的卡片列表
+- 显示：职位名称、公司、地点、薪资、来源网站
+- 折叠式工作内容展示
+- 点击打开原始链接
+
+```vue
+<template>
+  <el-card class="job-card" @click="openJobLink">
+    <div class="job-header">
+      <h3 class="job-title">{{ job.title }}</h3>
+      <span class="job-source">{{ job.source }}</span>
+    </div>
+    
+    <div class="job-info">
+      <p class="company">{{ job.company }}</p>
+      <p class="location">{{ job.location }}</p>
+      <p class="salary">{{ job.salary }}</p>
+    </div>
+    
+    <!-- 折叠式描述 -->
+    <!-- Collapsible description -->
+    <el-collapse v-model="activeNames">
+      <el-collapse-item title="Job Description" name="1">
+        <div v-html="job.description"></div>
+      </el-collapse-item>
+    </el-collapse>
+  </el-card>
+</template>
+
+<script setup>
+// 点击卡片打开外部链接
+// Open external link on card click
+const openJobLink = () => {
+  window.open(job.url, '_blank')
+}
+</script>
+```
+
+### ChatBox.vue  
+**功能**：
+- WebSocket实时聊天
+- 支持Markdown渲染
+- 简历文件上传
+- 清除聊天记录按钮
+
+```vue
+<template>
+  <div class="chat-container">
+    <!-- 消息显示区 -->
+    <!-- Message display area -->
+    <div class="messages-area">
+      <div 
+        v-for="message in messages" 
+        :key="message.id"
+        :class="['message', message.role]"
+      >
+        <div v-html="renderMarkdown(message.content)"></div>
+      </div>
+    </div>
+    
+    <!-- 输入区 -->
+    <!-- Input area -->
+    <div class="input-area">
+      <el-upload
+        :before-upload="handleResumeUpload"
+        accept=".pdf,.doc,.docx"
+        :show-file-list="false"
+      >
+        <el-button type="primary">Upload Resume</el-button>
+      </el-upload>
+      
+      <el-input
+        v-model="currentMessage"
+        type="textarea"
+        :rows="3"
+        placeholder="Ask anything about jobs or career..."
+        @keydown.ctrl.enter="sendMessage"
+      />
+      
+      <div class="button-group">
+        <el-button @click="sendMessage">Send</el-button>
+        <el-button @click="clearChat" type="danger">Clear Chat</el-button>
+      </div>
+    </div>
+  </div>
+</template>
+```
+
+### HeatmapChart.vue
+**功能**：
+- 使用Chart.js渲染技能热点图
+- 接收后台`{skill, score}`数组数据
+- 支持雷达图和热力图两种模式
+
+```vue
+<template>
+  <div class="chart-container">
+    <canvas ref="chartCanvas"></canvas>
+  </div>
+</template>
+
+<script setup>
+import { Chart } from 'chart.js'
+
+// 技能热点图渲染
+// Skill heatmap rendering
+const renderHeatmap = (skillData) => {
+  new Chart(chartCanvas.value, {
+    type: 'radar',  // 或 'heatmap'
+    data: {
+      labels: skillData.map(item => item.skill),
+      datasets: [{
+        label: 'Skill Demand',
+        data: skillData.map(item => item.score),
+        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+        borderColor: 'rgba(54, 162, 235, 1)',
+      }]
+    }
+  })
+}
+</script>
+```
+
+## 状态管理 (Pinia)
+
+### user.ts
+```typescript
+import { defineStore } from 'pinia'
+
+// 用户状态管理
+// User state management
+export const useUserStore = defineStore('user', {
+  state: () => ({
+    isAuthenticated: false,
+    userInfo: null,
+    jobs: [],
+    chatMessages: [],
+    currentResume: null
+  }),
+  
+  actions: {
+    // Google OAuth登录
+    // Google OAuth login
+    async loginWithGoogle(authCode: string) {
+      try {
+        const response = await api.post('/auth/google', { code: authCode })
+        this.isAuthenticated = true
+        this.userInfo = response.data.user
+      } catch (error) {
+        console.error('Login failed:', error)
+      }
+    },
+    
+    // 搜索职位
+    // Search jobs
+    async searchJobs(searchParams: SearchParams) {
+      try {
+        const response = await api.get('/jobs/search', { params: searchParams })
+        this.jobs = response.data.jobs
+      } catch (error) {
+        console.error('Job search failed:', error)
+      }
+    }
+  }
+})
+```
+
+## WebSocket通信
+
+### 聊天WebSocket实现
+```typescript
+// WebSocket连接管理
+// WebSocket connection management
+class ChatWebSocket {
+  private ws: WebSocket | null = null
+  
+  connect() {
+    this.ws = new WebSocket(`wss://${window.location.host}/chat/ws`)
+    
+    this.ws.onmessage = (event) => {
+      const message = JSON.parse(event.data)
+      // 处理收到的消息
+      // Handle received messages
+      this.handleMessage(message)
+    }
+    
+    this.ws.onerror = (error) => {
+      console.error('WebSocket error:', error)
+    }
+  }
+  
+  sendMessage(content: string) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        role: 'user',
+        content: content
+      }))
+    }
+  }
+}
+```
+
+## 响应式设计要求
+- 支持桌面端和平板端显示
+- 左右栏在小屏幕上可切换显示
+- 卡片列表支持虚拟滚动优化性能
+- 图表组件自适应容器尺寸
+
+## 构建和部署
+- `npm run build` 生成静态文件到 `/dist`
+- 静态文件复制到后端 `/app/static` 目录
+- 由FastAPI `StaticFiles` 提供服务，无需额外CDN

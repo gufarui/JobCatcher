@@ -1,0 +1,249 @@
+/**
+ * JobCatcher 全局样式
+ * Global styles for JobCatcher application
+ */
+
+/* CSS变量定义 / CSS Variables */
+:root {
+  /* 主题色 / Theme colors */
+  --jc-primary: #409eff;
+  --jc-primary-light: #79bbff;
+  --jc-primary-dark: #337ecc;
+  
+  /* 功能色 / Functional colors */
+  --jc-success: #67c23a;
+  --jc-warning: #e6a23c;
+  --jc-danger: #f56c6c;
+  --jc-info: #909399;
+  
+  /* 文字色 / Text colors */
+  --jc-text-primary: #303133;
+  --jc-text-regular: #606266;
+  --jc-text-secondary: #909399;
+  --jc-text-placeholder: #c0c4cc;
+  
+  /* 边框色 / Border colors */
+  --jc-border-light: #e4e7ed;
+  --jc-border-lighter: #ebeef5;
+  --jc-border-extra-light: #f2f6fc;
+  
+  /* 背景色 / Background colors */
+  --jc-bg-white: #ffffff;
+  --jc-bg-light: #f8f9fa;
+  --jc-bg-lighter: #fafbfc;
+  
+  /* 阴影 / Shadows */
+  --jc-shadow-light: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  --jc-shadow-base: 0 2px 4px rgba(0, 0, 0, 0.12), 0 0 6px rgba(0, 0, 0, 0.04);
+  --jc-shadow-dark: 0 4px 8px rgba(0, 0, 0, 0.12), 0 0 12px rgba(0, 0, 0, 0.04);
+  
+  /* 圆角 / Border radius */
+  --jc-radius-small: 4px;
+  --jc-radius-base: 8px;
+  --jc-radius-large: 12px;
+  
+  /* 间距 / Spacing */
+  --jc-space-xs: 4px;
+  --jc-space-sm: 8px;
+  --jc-space-md: 16px;
+  --jc-space-lg: 24px;
+  --jc-space-xl: 32px;
+  --jc-space-xxl: 48px;
+}
+
+/* 暗色主题变量 / Dark theme variables */
+html.dark {
+  --jc-text-primary: #e5eaf3;
+  --jc-text-regular: #cfd3dc;
+  --jc-text-secondary: #a3a6ad;
+  --jc-text-placeholder: #8d9095;
+  
+  --jc-border-light: #414243;
+  --jc-border-lighter: #363637;
+  --jc-border-extra-light: #2b2b2c;
+  
+  --jc-bg-white: #1d1e1f;
+  --jc-bg-light: #141414;
+  --jc-bg-lighter: #0a0a0a;
+}
+
+/* 基础重置样式 / Base reset styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 
+               'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+  color: var(--jc-text-primary);
+  background-color: var(--jc-bg-light);
+  transition: color 0.3s, background-color 0.3s;
+}
+
+/* 链接样式 / Link styles */
+a {
+  color: var(--jc-primary);
+  text-decoration: none;
+  transition: color 0.3s;
+}
+
+a:hover {
+  color: var(--jc-primary-light);
+}
+
+/* 按钮基础样式 / Button base styles */
+button {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  background: transparent;
+  transition: all 0.3s;
+}
+
+/* 输入框基础样式 / Input base styles */
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  border: 1px solid var(--jc-border-light);
+  border-radius: var(--jc-radius-small);
+  outline: none;
+  transition: border-color 0.3s;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--jc-primary);
+}
+
+/* 滚动条样式 / Scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--jc-bg-lighter);
+  border-radius: var(--jc-radius-small);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--jc-border-light);
+  border-radius: var(--jc-radius-small);
+  transition: background 0.3s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--jc-text-secondary);
+}
+
+/* 工具类 / Utility classes */
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+
+.flex { display: flex; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.flex-column { display: flex; flex-direction: column; }
+
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+
+.mt-xs { margin-top: var(--jc-space-xs); }
+.mt-sm { margin-top: var(--jc-space-sm); }
+.mt-md { margin-top: var(--jc-space-md); }
+.mt-lg { margin-top: var(--jc-space-lg); }
+
+.mb-xs { margin-bottom: var(--jc-space-xs); }
+.mb-sm { margin-bottom: var(--jc-space-sm); }
+.mb-md { margin-bottom: var(--jc-space-md); }
+.mb-lg { margin-bottom: var(--jc-space-lg); }
+
+.p-xs { padding: var(--jc-space-xs); }
+.p-sm { padding: var(--jc-space-sm); }
+.p-md { padding: var(--jc-space-md); }
+.p-lg { padding: var(--jc-space-lg); }
+
+/* 卡片样式 / Card styles */
+.jc-card {
+  background: var(--jc-bg-white);
+  border: 1px solid var(--jc-border-lighter);
+  border-radius: var(--jc-radius-base);
+  box-shadow: var(--jc-shadow-light);
+  transition: all 0.3s;
+}
+
+.jc-card:hover {
+  box-shadow: var(--jc-shadow-base);
+}
+
+/* 加载动画 / Loading animation */
+.jc-loading {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--jc-border-light);
+  border-top: 2px solid var(--jc-primary);
+  border-radius: 50%;
+  animation: jc-spin 1s linear infinite;
+}
+
+@keyframes jc-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 响应式设计 / Responsive design */
+@media (max-width: 768px) {
+  html {
+    font-size: 12px;
+  }
+  
+  .jc-card {
+    border-radius: var(--jc-radius-small);
+    margin: var(--jc-space-sm);
+  }
+}
+
+@media (max-width: 480px) {
+  html {
+    font-size: 11px;
+  }
+  
+  .flex-between {
+    flex-direction: column;
+    gap: var(--jc-space-sm);
+  }
+}
+
+/* 打印样式 / Print styles */
+@media print {
+  * {
+    background: transparent !important;
+    color: black !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  
+  a, a:visited {
+    text-decoration: underline;
+  }
+  
+  .jc-card {
+    border: 1px solid #000;
+    box-shadow: none;
+  }
+} 

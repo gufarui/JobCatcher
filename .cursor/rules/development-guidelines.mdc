@@ -1,0 +1,54 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# JobCatcher 开发指导原则
+
+## 基本原则
+1. **严格遵循开发文档** - 不得编写开发文档以外的任何功能和接口
+2. **不得更改开发文档内容** - 必须按照 [开发文档.md](mdc:开发文档.md) 进行代码构造
+3. **中文注释** - 所有代码必须有详细的中英文双语注释
+4. **英文前端** - 编写的前端页面语言必须是英文
+5. **模块化测试** - 一个模块完成后，必须进行测试
+
+## 技术要求
+1. **联网搜索依赖** - 安装依赖前必须联网搜索最新稳定版本
+2. **官方文档优先** - 编写代码前必须：
+   - 联网搜索新特性
+   - 使用context7查看文档
+   - Claude相关功能必须查看官方文档: https://docs.anthropic.com/en/home
+3. **版本控制** - 使用最新稳定版本的依赖包
+
+## 代码规范
+1. **注释标准**:
+   ```python
+   # 中文注释说明功能
+   # English comment explaining functionality
+   def function_name():
+       pass
+   ```
+
+2. **前端语言**:
+   ```vue
+   <!-- 所有UI文本必须使用英文 -->
+   <el-button>Continue with Google</el-button>
+   ```
+
+3. **错误处理**:
+   - 每个API调用都要有错误处理
+   - 用户友好的错误提示信息
+
+## Agent开发特殊要求
+根据开发文档补充内容，Agent相关功能开发必须：
+1. 查看Claude 4官方文档: https://docs.anthropic.com/en/home
+2. 使用LangGraph进行工作流编排
+3. 实现Tool Calling功能
+4. 遵循RAG检索模式
+
+## 环境变量管理
+参考 [.env-template](mdc:.env-template) 配置所有必需的环境变量：
+- ANTHROPIC_API_KEY - Claude 4 API密钥
+- AZURE_SEARCH_ENDPOINT/KEY - Azure搜索服务
+- GOOGLE_CLIENT_ID/SECRET - OAuth认证
+- 其他第三方服务API密钥

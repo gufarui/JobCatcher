@@ -1,19 +1,49 @@
 """
 简历分析Agent
 Resume Critic Agent for analyzing resume-job matching and scoring
+使用Claude 4文档处理能力进行智能简历解析和匹配度分析
+Using Claude 4 document processing capabilities for intelligent resume parsing and match analysis
 """
 
 import logging
 import asyncio
+import json
+import base64
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-from langchain_core.tools import tool
+from langchain_core.tools import tool, BaseTool
+from langchain_core.messages import HumanMessage, AIMessage
 from pydantic import BaseModel, Field
 
 from app.agents.base import BaseAgent, AgentState
-from app.services.resume_parser import ResumeParserService
-from app.services.azure_search import AzureSearchService
+from app.services.azure_search import get_search_service
+from app.core.config import settings
+
+
+class ResumeParseInput(BaseModel):
+    """简历解析工具输入参数模型"""
+    file_content: str = Field(description="Base64编码的文件内容")
+    file_type: str = Field(default="pdf", description="文件类型：pdf、doc或docx")
+
+
+class SimilaritySearchInput(BaseModel):
+    """相似度搜索工具输入参数模型"""
+    resume_content: str = Field(description="简历内容文本，用于语义匹配")
+    job_preferences: str = Field(default="", description="职位偏好，如地点、行业等")
+    top_k: int = Field(default=20, description="返回匹配职位数量，默认20")
+
+
+class SkillAnalysisInput(BaseModel):
+    """技能分析工具输入参数模型"""
+    jobs_data: str = Field(description="职位数据JSON字符串")
+    resume_skills: List[str] = Field(description="简历中的技能列表")
+
+
+class JobMatchInput(BaseModel):
+    """职位匹配工具输入参数模型"""
+    resume_data: Dict[str, Any] = Field(description="解析后的简历数据")
+    job_data: Dict[str, Any] = Field(description="职位数据")
 
 
 class MatchingResult(BaseModel):
@@ -31,515 +61,662 @@ class MatchingResult(BaseModel):
     recommendations: List[str] = Field(description="改进建议 / Improvement recommendations")
 
 
-class ResumeCriticAgent(BaseAgent):
+class ResumeParsingTool(BaseTool):
     """
-    简历分析Agent
-    Responsible for analyzing resumes and calculating job match scores
+    Claude 4增强简历解析工具 - 使用文档处理能力
+    Enhanced resume parsing tool using Claude 4 document processing capabilities
     """
     
-    def __init__(self):
-        super().__init__(
-            name="resume_critic_agent",
-            description="专业的简历分析专家，能够分析简历质量并计算与职位的匹配度 / Professional resume analysis expert that analyzes resume quality and calculates job match scores",
-            temperature=0.2
-        )
-        
-        # 初始化服务
-        # Initialize services
-        self.resume_parser_service = ResumeParserService()
-        self.azure_search_service = AzureSearchService()
-        
-        self.logger = logging.getLogger("agent.resume_critic")
+    name: str = "parse_resume_document"
+    description: str = """
+    使用Claude 4的文档处理能力解析简历文件。支持PDF、DOC、DOCX格式。
+    自动提取个人信息、工作经验、教育背景、技能等结构化数据。
+    Parse resume files using Claude 4 document processing. Supports PDF, DOC, DOCX formats.
+    Automatically extract personal info, work experience, education, skills as structured data.
+    """
+    args_schema: type[ResumeParseInput] = ResumeParseInput
     
-    def _setup_tools(self) -> None:
+    def _run(self, file_content: str, file_type: str = "pdf") -> str:
+        """同步解析包装器"""
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        return loop.run_until_complete(self._arun(file_content, file_type))
+    
+    async def _arun(self, file_content: str, file_type: str = "pdf") -> str:
         """
-        设置简历分析相关工具
-        Setup resume analysis related tools
+        异步简历解析 - 利用Claude 4文档处理
+        Asynchronous resume parsing using Claude 4 document processing
         """
-        
-        @tool("parse_resume_file")
-        def parse_resume(
-            file_path: str,
-            file_type: str = "pdf"
-        ) -> Dict[str, Any]:
-            """
-            解析简历文件，提取结构化信息
-            Parse resume file and extract structured information
-            """
+        try:
+            import anthropic
+            
+            # 创建Anthropic客户端 / Create Anthropic client
+            client = anthropic.AsyncAnthropic(
+                api_key=settings.ANTHROPIC_API_KEY,
+                base_url=settings.ANTHROPIC_BASE_URL
+            )
+            
+            # 确定媒体类型 / Determine media type
+            media_type_map = {
+                "pdf": "application/pdf",
+                "doc": "application/msword", 
+                "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            }
+            media_type = media_type_map.get(file_type.lower(), "application/pdf")
+            
+            # 使用Claude 4文档处理API / Use Claude 4 document processing API
+            response = await client.messages.create(
+                model="claude-sonnet-4-20250514",  # 使用rules指定的模型
+                max_tokens=4000,
+                temperature=settings.CLAUDE_TEMPERATURE,  # 使用统一的温度设置
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "document",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": file_content
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": """请解析这份简历并提取以下结构化信息，以JSON格式返回：
+
+{
+  "personal_info": {
+    "name": "姓名",
+    "email": "邮箱",
+    "phone": "电话",
+    "location": "地址",
+    "linkedin": "LinkedIn链接"
+  },
+  "summary": "个人简介或职业目标",
+  "work_experience": [
+    {
+      "company": "公司名称",
+      "position": "职位",
+      "start_date": "开始时间",
+      "end_date": "结束时间",
+      "description": "工作描述",
+      "achievements": ["成就1", "成就2"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "学校名称",
+      "degree": "学位",
+      "major": "专业",
+      "graduation_date": "毕业时间",
+      "gpa": "成绩"
+    }
+  ],
+  "skills": {
+    "technical": ["技术技能"],
+    "languages": ["语言技能"],
+    "soft_skills": ["软技能"]
+  },
+  "projects": [
+    {
+      "name": "项目名称",
+      "description": "项目描述",
+      "technologies": ["使用技术"],
+      "url": "项目链接"
+    }
+  ],
+  "certifications": ["证书列表"],
+  "languages": ["语言能力"],
+  "additional_info": "其他信息"
+}
+
+请确保提取的信息准确且结构化。如果某些信息不存在，请使用空值或空数组。"""
+                        }
+                    ]
+                }]
+            )
+            
+            # 提取解析结果 / Extract parsing result
+            parsed_content = ""
+            for content_block in response.content:
+                if content_block.type == "text":
+                    parsed_content += content_block.text
+            
+            # 尝试提取JSON / Try to extract JSON
             try:
-                result = asyncio.run(
-                    self.resume_parser_service.parse_resume(
-                        file_path=file_path,
-                        file_type=file_type
-                    )
-                )
-                return {
-                    "success": True,
-                    "parsed_data": result,
-                    "extraction_timestamp": datetime.now().isoformat()
-                }
-            except Exception as e:
-                self.logger.error(f"简历解析失败 / Resume parsing failed: {e}")
-                return {
-                    "success": False,
-                    "error": str(e),
-                    "parsed_data": None
-                }
+                # 查找JSON块 / Find JSON block
+                import re
+                json_match = re.search(r'\{[\s\S]*\}', parsed_content)
+                if json_match:
+                    json_str = json_match.group()
+                    parsed_data = json.loads(json_str)
+                    return json.dumps(parsed_data, ensure_ascii=False, indent=2)
+                else:
+                    return json.dumps({
+                        "error": "无法提取结构化数据",
+                        "raw_content": parsed_content
+                    }, ensure_ascii=False)
+            except json.JSONDecodeError:
+                return json.dumps({
+                    "error": "JSON解析失败",
+                    "raw_content": parsed_content
+                }, ensure_ascii=False)
+            
+        except Exception as e:
+            logging.error(f"简历解析失败: {e}")
+            return json.dumps({
+                "error": f"简历解析失败: {str(e)}",
+                "raw_content": ""
+            }, ensure_ascii=False)
+
+
+class SimilaritySearchTool(BaseTool):
+    """
+    相似度搜索工具 - 使用Azure AI Search进行语义匹配
+    Similarity search tool - using Azure AI Search for semantic matching
+    """
+    
+    name: str = "similarity_search"
+    description: str = """
+    基于简历内容进行语义相似度搜索，找到最匹配的职位。
+    使用Azure AI Search的向量化搜索能力，提供精准的语义匹配。
+    Perform semantic similarity search based on resume content to find best matching jobs.
+    Uses Azure AI Search vectorized search for precise semantic matching.
+    """
+    args_schema: type[SimilaritySearchInput] = SimilaritySearchInput
+    
+    def _run(self, resume_content: str, job_preferences: str = "", top_k: int = 20) -> str:
+        """同步相似度搜索"""
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
         
-        @tool("analyze_resume_quality")
-        def analyze_resume_quality(
-            resume_data: Dict[str, Any]
-        ) -> Dict[str, Any]:
-            """
-            分析简历质量和完整性
-            Analyze resume quality and completeness
-            """
-            try:
-                # 评估简历各个部分的完整性
-                # Evaluate completeness of resume sections
-                quality_score = 0
-                feedback = []
+        return loop.run_until_complete(self._arun(resume_content, job_preferences, top_k))
+    
+    async def _arun(self, resume_content: str, job_preferences: str = "", top_k: int = 20) -> str:
+        """异步相似度搜索"""
+        try:
+            search_service = await get_search_service()
+            
+            # 构建搜索查询 - 结合简历内容和职位偏好
+            # Build search query - combine resume content and job preferences
+            search_query = resume_content[:500]  # 限制查询长度
+            if job_preferences:
+                search_query += f" {job_preferences}"
+            
+            # 执行语义搜索
+            # Execute semantic search
+            jobs = await search_service.search_jobs(
+                query=search_query,
+                top=top_k
+            )
+            
+            if not jobs:
+                return json.dumps({
+                    "status": "no_matches",
+                    "message": "未找到匹配的职位。建议扩大搜索范围或调整简历关键词。",
+                    "jobs": []
+                }, ensure_ascii=False)
+            
+            # 格式化搜索结果，包含相似度分数
+            # Format search results with similarity scores
+            results = []
+            for job in jobs:
+                results.append({
+                    "job_id": job.get("id", ""),
+                    "title": job.get("title", ""),
+                    "company": job.get("company", ""),
+                    "location": job.get("location", ""),
+                    "salary": job.get("salary", ""),
+                    "description": job.get("description", "")[:300] + "..." if len(job.get("description", "")) > 300 else job.get("description", ""),
+                    "skills": job.get("skills", []),
+                    "source": job.get("source", ""),
+                    "url": job.get("url", ""),
+                    "similarity_score": job.get("@search.score", 0),
+                    "indexed_at": job.get("indexed_at", "")
+                })
+            
+            return json.dumps({
+                "status": "success",
+                "total": len(results),
+                "jobs": results
+            }, ensure_ascii=False, indent=2)
+            
+        except Exception as e:
+            return json.dumps({
+                "status": "error",
+                "message": f"相似度搜索时发生错误：{str(e)}",
+                "jobs": []
+            }, ensure_ascii=False)
+
+
+class SkillAnalysisTool(BaseTool):
+    """
+    技能分析工具 - 分析职位技能要求并生成技能差距报告
+    Skills analysis tool - analyze job skill requirements and generate skill gap report
+    """
+    
+    name: str = "analyze_skill_gap"
+    description: str = """
+    分析职位列表中的技能要求，与简历技能对比，生成详细的技能差距和市场需求分析。
+    提供技能热度排名、匹配度分析和职业发展建议。
+    Analyze skill requirements in job listings, compare with resume skills, 
+    generate detailed skill gap and market demand analysis with skill heat ranking.
+    """
+    args_schema: type[SkillAnalysisInput] = SkillAnalysisInput
+    
+    def _run(self, jobs_data: str, resume_skills: List[str]) -> str:
+        """同步技能分析"""
+        try:
+            jobs = json.loads(jobs_data)
+            
+            # 收集所有职位的技能要求
+            # Collect skill requirements from all jobs
+            all_skills = {}
+            job_count = len(jobs)
+            
+            for job in jobs:
+                job_skills = job.get("skills", [])
                 
-                # 基本信息检查 (20分)
-                # Basic information check (20 points)
-                if resume_data.get("personal_info"):
-                    personal_info = resume_data["personal_info"]
-                    if personal_info.get("name"):
-                        quality_score += 5
-                    if personal_info.get("email"):
-                        quality_score += 5
-                    if personal_info.get("phone"):
-                        quality_score += 5
-                    if personal_info.get("location"):
-                        quality_score += 5
-                else:
-                    feedback.append("缺失基本个人信息 / Missing basic personal information")
+                # 从职位描述中提取技能（增强版）
+                # Extract skills from job description (enhanced version)
+                description = job.get("description", "").lower()
+                common_skills = [
+                    "python", "java", "javascript", "react", "vue", "angular", "django", "fastapi",
+                    "sql", "postgresql", "mysql", "mongodb", "redis", "docker", "kubernetes",
+                    "aws", "azure", "gcp", "git", "linux", "nodejs", "typescript", "html", "css",
+                    "machine learning", "ai", "data science", "pandas", "numpy", "tensorflow",
+                    "pytorch", "flask", "spring", "microservices", "restful", "graphql",
+                    "ci/cd", "jenkins", "gitlab", "terraform", "ansible", "prometheus"
+                ]
                 
-                # 工作经验检查 (30分)
-                # Work experience check (30 points)
-                work_exp = resume_data.get("work_experience", [])
-                if work_exp and len(work_exp) > 0:
-                    quality_score += 15
-                    # 检查经验描述的详细程度
-                    detailed_descriptions = sum(1 for exp in work_exp if len(exp.get("description", "")) > 100)
-                    if detailed_descriptions >= len(work_exp) * 0.7:
-                        quality_score += 15
-                    else:
-                        feedback.append("工作经验描述过于简单 / Work experience descriptions are too brief")
-                else:
-                    feedback.append("缺失工作经验信息 / Missing work experience information")
+                for skill in common_skills:
+                    if skill in description:
+                        job_skills.append(skill)
                 
-                # 技能检查 (25分)
-                # Skills check (25 points)
-                skills = resume_data.get("skills", [])
-                if skills and len(skills) >= 5:
-                    quality_score += 15
-                    # 检查技能的多样性
-                    if len(skills) >= 10:
-                        quality_score += 10
-                    else:
-                        feedback.append("建议添加更多相关技能 / Suggest adding more relevant skills")
-                else:
-                    feedback.append("技能列表过少 / Too few skills listed")
-                
-                # 教育背景检查 (15分)
-                # Education check (15 points)
-                education = resume_data.get("education", [])
-                if education and len(education) > 0:
-                    quality_score += 15
-                else:
-                    feedback.append("缺失教育背景信息 / Missing education information")
-                
-                # 项目经验检查 (10分)
-                # Project experience check (10 points)
-                projects = resume_data.get("projects", [])
-                if projects and len(projects) > 0:
-                    quality_score += 10
-                else:
-                    feedback.append("建议添加项目经验 / Suggest adding project experience")
-                
-                return {
-                    "success": True,
-                    "quality_score": min(quality_score, 100),
-                    "feedback": feedback,
-                    "strengths": self._identify_strengths(resume_data),
-                    "improvement_areas": feedback
+                # 统计技能出现频率
+                # Count skill frequency
+                for skill in set(job_skills):  # 去重
+                    skill_lower = skill.lower().strip()
+                    if skill_lower:
+                        all_skills[skill_lower] = all_skills.get(skill_lower, 0) + 1
+            
+            # 生成技能分析报告
+            # Generate skill analysis report
+            analysis = {
+                "total_jobs_analyzed": job_count,
+                "market_demand_skills": [],
+                "resume_skills": [skill.lower() for skill in resume_skills],
+                "matching_skills": [],
+                "missing_skills": [],
+                "skill_recommendations": []
+            }
+            
+            # 按需求量排序技能
+            # Sort skills by demand
+            sorted_skills = sorted(all_skills.items(), key=lambda x: x[1], reverse=True)
+            
+            for skill, count in sorted_skills[:25]:  # 取前25个热门技能
+                demand_percentage = (count / job_count) * 100
+                skill_data = {
+                    "skill": skill,
+                    "demand_count": count,
+                    "demand_percentage": round(demand_percentage, 1)
                 }
-                
-            except Exception as e:
-                self.logger.error(f"简历质量分析失败 / Resume quality analysis failed: {e}")
-                return {
-                    "success": False,
-                    "error": str(e),
-                    "quality_score": 0
-                }
+                analysis["market_demand_skills"].append(skill_data)
+            
+            # 分析技能匹配和差距
+            # Analyze skill matching and gaps
+            resume_skills_lower = [skill.lower() for skill in resume_skills]
+            
+            for skill_data in analysis["market_demand_skills"]:
+                skill = skill_data["skill"]
+                if skill in resume_skills_lower:
+                    analysis["matching_skills"].append(skill_data)
+                else:
+                    analysis["missing_skills"].append(skill_data)
+            
+            # 生成技能建议
+            # Generate skill recommendations
+            high_demand_missing = [
+                skill for skill in analysis["missing_skills"]
+                if skill["demand_percentage"] > 25
+            ]
+            
+            for skill_data in high_demand_missing[:5]:  # 取前5个高需求缺失技能
+                analysis["skill_recommendations"].append({
+                    "skill": skill_data["skill"],
+                    "priority": "高" if skill_data["demand_percentage"] > 50 else "中",
+                    "reason": f"市场需求度{skill_data['demand_percentage']}%，建议优先学习",
+                    "learning_resources": self._get_learning_resources(skill_data["skill"])
+                })
+            
+            return json.dumps(analysis, ensure_ascii=False, indent=2)
+            
+        except Exception as e:
+            return json.dumps({
+                "error": f"技能分析失败: {str(e)}",
+                "analysis": {}
+            }, ensure_ascii=False)
+    
+    def _get_learning_resources(self, skill: str) -> List[str]:
+        """获取技能学习资源建议"""
+        resources_map = {
+            "python": ["Python官方文档", "Real Python", "Python Crash Course"],
+            "javascript": ["MDN Web Docs", "JavaScript.info", "Eloquent JavaScript"],
+            "react": ["React官方文档", "React Tutorial", "Full Stack Open"],
+            "docker": ["Docker官方文档", "Docker Mastery", "Play with Docker"],
+            "kubernetes": ["Kubernetes官方文档", "CKA认证", "Kubernetes in Action"],
+            "aws": ["AWS官方培训", "AWS Certified Solutions Architect", "A Cloud Guru"],
+            "machine learning": ["Coursera ML课程", "Kaggle Learn", "Fast.ai"]
+        }
         
-        @tool("calculate_job_match_score")
-        def calculate_match_score(
-            resume_data: Dict[str, Any],
-            job_data: Dict[str, Any]
-        ) -> Dict[str, Any]:
-            """
-            计算简历与职位的匹配度分数
-            Calculate match score between resume and job
-            """
-            try:
-                # 提取简历和职位的技能关键词
-                resume_skills = self._extract_skills(resume_data)
-                job_skills = self._extract_job_requirements(job_data)
-                
-                # 技术技能匹配 (40%)
-                technical_score = self._calculate_technical_match(resume_skills, job_skills)
-                
-                # 经验匹配 (35%)
-                experience_score = self._calculate_experience_match(resume_data, job_data)
-                
-                # 教育背景匹配 (15%)
-                education_score = self._calculate_education_match(resume_data, job_data)
-                
-                # 其他因素 (10%)
-                other_score = self._calculate_other_factors(resume_data, job_data)
-                
-                # 计算总体分数
-                overall_score = (
-                    technical_score * 0.4 +
-                    experience_score * 0.35 +
-                    education_score * 0.15 +
-                    other_score * 0.1
-                )
-                
-                # 识别匹配和缺失的技能
-                matching_skills = list(set(resume_skills) & set(job_skills))
-                missing_skills = list(set(job_skills) - set(resume_skills))
-                
-                return {
-                    "success": True,
-                    "overall_score": round(overall_score, 2),
-                    "technical_score": round(technical_score, 2),
-                    "experience_score": round(experience_score, 2),
-                    "education_score": round(education_score, 2),
-                    "other_score": round(other_score, 2),
+        return resources_map.get(skill.lower(), ["在线教程", "官方文档", "实践项目"])
+
+
+class JobMatchScoreTool(BaseTool):
+    """
+    职位匹配度计算工具 - 综合评估简历与职位的匹配程度
+    Job match scoring tool - comprehensive assessment of resume-job matching
+    """
+    
+    name: str = "calculate_job_match"
+    description: str = """
+    计算简历与特定职位的综合匹配度分数。
+    分析技能匹配、经验相关性、教育背景等多个维度，提供详细的匹配报告。
+    Calculate comprehensive match score between resume and specific job.
+    Analyzes skill matching, experience relevance, education background and provides detailed match report.
+    """
+    args_schema: type[JobMatchInput] = JobMatchInput
+    
+    def _run(self, resume_data: Dict[str, Any], job_data: Dict[str, Any]) -> str:
+        """计算匹配度分数"""
+        try:
+            # 提取数据 / Extract data
+            resume_skills = self._extract_resume_skills(resume_data)
+            job_skills = self._extract_job_skills(job_data)
+            
+            # 计算各维度分数 / Calculate dimension scores
+            technical_score = self._calculate_technical_match(resume_skills, job_skills)
+            experience_score = self._calculate_experience_match(resume_data, job_data)
+            education_score = self._calculate_education_match(resume_data, job_data)
+            
+            # 计算综合分数 / Calculate overall score
+            overall_score = (technical_score * 0.4 + experience_score * 0.35 + education_score * 0.25)
+            
+            # 分析技能匹配情况 / Analyze skill matching
+            matching_skills = list(set(resume_skills) & set(job_skills))
+            missing_skills = list(set(job_skills) - set(resume_skills))
+            
+            # 生成建议 / Generate recommendations
+            recommendations = self._generate_recommendations(missing_skills, resume_data, job_data)
+            
+            # 构建结果 / Build result
+            result = {
+                "job_id": job_data.get("id", "unknown"),
+                "job_title": job_data.get("title", ""),
+                "company": job_data.get("company", ""),
+                "overall_score": round(overall_score, 1),
+                "dimension_scores": {
+                    "technical_skills": round(technical_score, 1),
+                    "experience": round(experience_score, 1),
+                    "education": round(education_score, 1)
+                },
+                "skill_analysis": {
                     "matching_skills": matching_skills,
                     "missing_skills": missing_skills,
-                    "recommendations": self._generate_recommendations(missing_skills, resume_data, job_data)
-                }
-                
-            except Exception as e:
-                self.logger.error(f"匹配度计算失败 / Match score calculation failed: {e}")
-                return {
-                    "success": False,
-                    "error": str(e),
-                    "overall_score": 0
-                }
-        
-        @tool("batch_analyze_jobs")
-        def batch_analyze_job_matches(
-            resume_data: Dict[str, Any],
-            job_list: List[Dict[str, Any]],
-            top_k: int = 10
-        ) -> Dict[str, Any]:
-            """
-            批量分析简历与多个职位的匹配度
-            Batch analyze resume matches with multiple jobs
-            """
-            try:
-                matches = []
-                
-                for job in job_list:
-                    match_result = calculate_match_score(resume_data, job)
-                    if match_result.get("success"):
-                        matches.append({
-                            "job_id": job.get("id"),
-                            "job_title": job.get("title"),
-                            "company": job.get("company"),
-                            "match_score": match_result["overall_score"],
-                            "technical_score": match_result["technical_score"],
-                            "experience_score": match_result["experience_score"],
-                            "education_score": match_result["education_score"],
-                            "matching_skills": match_result["matching_skills"],
-                            "missing_skills": match_result["missing_skills"]
-                        })
-                
-                # 按匹配度排序
-                matches.sort(key=lambda x: x["match_score"], reverse=True)
-                
-                return {
-                    "success": True,
-                    "total_analyzed": len(job_list),
-                    "successful_matches": len(matches),
-                    "top_matches": matches[:top_k],
-                    "average_match_score": sum(m["match_score"] for m in matches) / len(matches) if matches else 0
-                }
-                
-            except Exception as e:
-                self.logger.error(f"批量分析失败 / Batch analysis failed: {e}")
-                return {
-                    "success": False,
-                    "error": str(e),
-                    "top_matches": []
-                }
-        
-        # 添加移交工具
-        # Add handoff tools
-        transfer_to_rewrite = self.create_handoff_tool(
-            target_agent="resume_rewrite_agent",
-            description="将分析结果移交给简历改写专家进行优化 / Transfer analysis results to resume rewrite expert for optimization"
-        )
-        
-        transfer_to_skill_heatmap = self.create_handoff_tool(
-            target_agent="skill_heatmap_agent",
-            description="将技能数据移交给技能分析专家生成热点图 / Transfer skill data to skill analysis expert for heatmap generation"
-        )
-        
-        # 注册所有工具
-        # Register all tools
-        self.tools = [
-            parse_resume,
-            analyze_resume_quality,
-            calculate_match_score,
-            batch_analyze_job_matches,
-            transfer_to_rewrite,
-            transfer_to_skill_heatmap
-        ]
+                    "skill_match_rate": round(len(matching_skills) / len(job_skills) * 100, 1) if job_skills else 0
+                },
+                "recommendations": recommendations,
+                "match_level": self._get_match_level(overall_score)
+            }
+            
+            return json.dumps(result, ensure_ascii=False, indent=2)
+            
+        except Exception as e:
+            return json.dumps({
+                "error": f"匹配度计算失败: {str(e)}",
+                "overall_score": 0
+            }, ensure_ascii=False)
     
-    def get_system_prompt(self) -> str:
-        """
-        获取简历分析Agent的系统提示词
-        Get system prompt for resume critic agent
-        """
-        return """你是JobCatcher平台的简历分析专家。你的主要职责是：
-
-🎯 **核心能力 / Core Capabilities:**
-- 解析和分析简历文件（PDF、DOCX等格式）
-- 评估简历质量和完整性
-- 计算简历与职位的匹配度分数
-- 提供详细的改进建议和优化方案
-
-📋 **工作流程 / Workflow:**
-1. 接收简历文件并进行结构化解析
-2. 分析简历的各个组成部分（技能、经验、教育等）
-3. 计算与目标职位的匹配度（技术技能、经验、教育背景）
-4. 生成详细的分析报告和改进建议
-5. 如需要，移交给其他专家Agent进行进一步处理
-
-💡 **评分标准 / Scoring Criteria:**
-- 技术技能匹配 (40%): 关键技能覆盖度和熟练程度
-- 工作经验匹配 (35%): 相关经验年限和项目复杂度
-- 教育背景匹配 (15%): 学历要求和专业相关性
-- 其他因素 (10%): 语言能力、认证资格、软技能等
-
-🔧 **可用工具 / Available Tools:**
-- parse_resume_file: 解析简历文件
-- analyze_resume_quality: 分析简历质量
-- calculate_job_match_score: 计算职位匹配度
-- batch_analyze_jobs: 批量分析多个职位
-- transfer_to_rewrite: 移交简历改写
-- transfer_to_skill_heatmap: 移交技能分析
-
-🎨 **分析重点 / Analysis Focus:**
-- 客观、准确地评估简历质量
-- 提供具体、可操作的改进建议
-- 识别候选人的优势和不足
-- 帮助用户了解市场需求和技能差距
-
-始终保持专业和建设性的态度，帮助用户提升简历质量和求职竞争力。
-Always maintain a professional and constructive attitude to help users improve resume quality and job competitiveness."""
-    
-    def _identify_strengths(self, resume_data: Dict[str, Any]) -> List[str]:
-        """
-        识别简历优势
-        Identify resume strengths
-        """
-        strengths = []
-        
-        # 技能多样性
-        skills = resume_data.get("skills", [])
-        if len(skills) >= 10:
-            strengths.append("技能范围广泛 / Wide range of skills")
-        
-        # 工作经验
-        work_exp = resume_data.get("work_experience", [])
-        if len(work_exp) >= 3:
-            strengths.append("工作经验丰富 / Rich work experience")
-        
-        # 教育背景
-        education = resume_data.get("education", [])
-        for edu in education:
-            if edu.get("degree") in ["Master", "PhD", "硕士", "博士"]:
-                strengths.append("高等教育背景 / Advanced education background")
-                break
-        
-        # 项目经验
-        projects = resume_data.get("projects", [])
-        if len(projects) >= 2:
-            strengths.append("项目经验丰富 / Rich project experience")
-        
-        return strengths
-    
-    def _extract_skills(self, resume_data: Dict[str, Any]) -> List[str]:
-        """
-        提取简历中的技能关键词
-        Extract skill keywords from resume
-        """
+    def _extract_resume_skills(self, resume_data: Dict[str, Any]) -> List[str]:
+        """提取简历技能"""
         skills = []
+        skills_data = resume_data.get("skills", {})
         
-        # 从技能部分提取
-        if "skills" in resume_data:
-            skills.extend(resume_data["skills"])
+        if isinstance(skills_data, dict):
+            # 新格式：分类技能
+            skills.extend(skills_data.get("technical", []))
+            skills.extend(skills_data.get("languages", []))
+            skills.extend(skills_data.get("soft_skills", []))
+        elif isinstance(skills_data, list):
+            # 旧格式：技能列表
+            skills.extend(skills_data)
         
-        # 从工作经验描述中提取技术关键词
-        work_exp = resume_data.get("work_experience", [])
-        tech_keywords = [
-            "python", "javascript", "java", "react", "vue", "angular", "node.js", 
-            "sql", "mongodb", "postgresql", "aws", "azure", "docker", "kubernetes",
-            "machine learning", "ai", "data analysis", "tensorflow", "pytorch"
-        ]
-        
-        for exp in work_exp:
+        # 从工作经验中提取技能
+        for exp in resume_data.get("work_experience", []):
             description = exp.get("description", "").lower()
+            # 简单关键词提取
+            tech_keywords = ["python", "javascript", "java", "sql", "aws", "docker"]
             for keyword in tech_keywords:
                 if keyword in description and keyword not in skills:
                     skills.append(keyword)
         
-        return skills
+        return [skill.lower().strip() for skill in skills if skill]
     
-    def _extract_job_requirements(self, job_data: Dict[str, Any]) -> List[str]:
-        """
-        提取职位要求中的技能关键词
-        Extract skill keywords from job requirements
-        """
-        requirements = []
+    def _extract_job_skills(self, job_data: Dict[str, Any]) -> List[str]:
+        """提取职位技能要求"""
+        skills = job_data.get("skills", [])
         
-        # 从职位描述和要求中提取
-        description = job_data.get("description", "")
-        job_requirements = job_data.get("requirements", "")
-        
-        text = f"{description} {job_requirements}".lower()
-        
-        # 常见技术技能关键词
+        # 从描述中提取技能
+        description = job_data.get("description", "").lower()
         tech_keywords = [
-            "python", "javascript", "java", "react", "vue", "angular", "node.js",
-            "sql", "mongodb", "postgresql", "aws", "azure", "docker", "kubernetes",
-            "machine learning", "ai", "data analysis", "tensorflow", "pytorch",
-            "git", "ci/cd", "microservices", "restful", "graphql"
+            "python", "javascript", "java", "react", "vue", "angular",
+            "sql", "postgresql", "mongodb", "aws", "azure", "docker", "kubernetes"
         ]
         
         for keyword in tech_keywords:
-            if keyword in text:
-                requirements.append(keyword)
+            if keyword in description and keyword not in skills:
+                skills.append(keyword)
         
-        return requirements
+        return [skill.lower().strip() for skill in skills if skill]
     
     def _calculate_technical_match(self, resume_skills: List[str], job_skills: List[str]) -> float:
-        """
-        计算技术技能匹配分数
-        Calculate technical skills match score
-        """
+        """计算技术技能匹配分数"""
         if not job_skills:
-            return 80.0  # 如果职位没有明确技能要求，给予中等分数
+            return 75.0  # 没有明确技能要求的职位给中等分数
         
         matching_skills = set(resume_skills) & set(job_skills)
         match_ratio = len(matching_skills) / len(job_skills)
         
-        return min(match_ratio * 100, 100)
+        # 考虑技能数量奖励
+        bonus = min(len(matching_skills) * 5, 25)  # 每个匹配技能+5分，最多+25分
+        
+        return min(match_ratio * 75 + bonus, 100)
     
     def _calculate_experience_match(self, resume_data: Dict[str, Any], job_data: Dict[str, Any]) -> float:
-        """
-        计算经验匹配分数
-        Calculate experience match score
-        """
-        # 简单的经验年限匹配计算
+        """计算经验匹配分数"""
         work_exp = resume_data.get("work_experience", [])
-        total_experience = len(work_exp)  # 简化计算
+        total_years = len(work_exp)  # 简化计算：工作经历数量代表年限
         
-        # 从职位描述中推断所需经验
-        required_exp = 2  # 默认要求2年经验
+        # 从职位描述推断经验要求
         description = job_data.get("description", "").lower()
+        title = job_data.get("title", "").lower()
         
-        if "senior" in description or "lead" in description:
-            required_exp = 5
-        elif "junior" in description or "entry" in description:
-            required_exp = 1
+        required_years = 2  # 默认要求
+        if any(word in description + title for word in ["senior", "lead", "principal"]):
+            required_years = 5
+        elif any(word in description + title for word in ["junior", "entry", "graduate"]):
+            required_years = 1
+        elif any(word in description + title for word in ["mid", "intermediate"]):
+            required_years = 3
         
-        if total_experience >= required_exp:
+        if total_years >= required_years:
             return 90.0
         else:
-            return (total_experience / required_exp) * 70
+            return max((total_years / required_years) * 70, 30)
     
     def _calculate_education_match(self, resume_data: Dict[str, Any], job_data: Dict[str, Any]) -> float:
-        """
-        计算教育背景匹配分数
-        Calculate education background match score
-        """
+        """计算教育背景匹配分数"""
         education = resume_data.get("education", [])
         if not education:
-            return 50.0
+            return 60.0  # 没有教育信息给中等分数
         
-        # 检查最高学历
+        # 分析最高学历
         highest_degree = ""
+        relevant_major = False
+        
         for edu in education:
             degree = edu.get("degree", "").lower()
-            if "phd" in degree or "博士" in degree:
+            major = edu.get("major", "").lower()
+            
+            # 确定最高学历
+            if any(word in degree for word in ["phd", "博士", "doctorate"]):
                 highest_degree = "phd"
-            elif "master" in degree or "硕士" in degree and highest_degree != "phd":
+            elif any(word in degree for word in ["master", "硕士", "msc", "mba"]) and highest_degree != "phd":
                 highest_degree = "master"
-            elif "bachelor" in degree or "学士" in degree and highest_degree not in ["phd", "master"]:
+            elif any(word in degree for word in ["bachelor", "学士", "bsc", "ba"]) and highest_degree not in ["phd", "master"]:
                 highest_degree = "bachelor"
+            
+            # 检查专业相关性
+            if any(word in major for word in ["computer", "software", "engineering", "计算机", "软件"]):
+                relevant_major = True
         
-        # 根据学历给分
-        if highest_degree == "phd":
-            return 100.0
-        elif highest_degree == "master":
-            return 90.0
-        elif highest_degree == "bachelor":
-            return 80.0
-        else:
-            return 60.0
-    
-    def _calculate_other_factors(self, resume_data: Dict[str, Any], job_data: Dict[str, Any]) -> float:
-        """
-        计算其他因素分数
-        Calculate other factors score
-        """
-        score = 70.0  # 基础分数
+        # 根据学历和专业相关性评分
+        base_score = {"phd": 100, "master": 85, "bachelor": 70}.get(highest_degree, 50)
+        major_bonus = 15 if relevant_major else 0
         
-        # 语言能力
-        languages = resume_data.get("languages", [])
-        if len(languages) > 1:
-            score += 15
-        
-        # 认证资格
-        certifications = resume_data.get("certifications", [])
-        if certifications:
-            score += 10
-        
-        # 项目经验
-        projects = resume_data.get("projects", [])
-        if len(projects) >= 2:
-            score += 5
-        
-        return min(score, 100)
+        return min(base_score + major_bonus, 100)
     
     def _generate_recommendations(self, missing_skills: List[str], resume_data: Dict[str, Any], job_data: Dict[str, Any]) -> List[str]:
-        """
-        生成改进建议
-        Generate improvement recommendations
-        """
+        """生成改进建议"""
         recommendations = []
         
         if missing_skills:
-            recommendations.append(f"建议学习以下技能：{', '.join(missing_skills[:5])} / Suggest learning these skills: {', '.join(missing_skills[:5])}")
+            high_priority = missing_skills[:3]  # 前3个关键技能
+            recommendations.append(f"建议学习关键技能：{', '.join(high_priority)}")
         
+        # 经验建议
         work_exp = resume_data.get("work_experience", [])
         if len(work_exp) < 2:
-            recommendations.append("建议增加更多相关工作经验 / Suggest adding more relevant work experience")
+            recommendations.append("建议积累更多相关工作经验或项目经验")
         
+        # 项目建议
         projects = resume_data.get("projects", [])
         if len(projects) < 2:
-            recommendations.append("建议添加项目经验展示技能应用 / Suggest adding project experience to demonstrate skill application")
+            recommendations.append("建议添加更多项目经验展示技术能力")
         
-        skills = resume_data.get("skills", [])
-        if len(skills) < 8:
-            recommendations.append("建议补充更多相关技能 / Suggest adding more relevant skills")
+        # 认证建议
+        certifications = resume_data.get("certifications", [])
+        if not certifications:
+            recommendations.append("考虑获得相关技术认证提升竞争力")
         
-        return recommendations 
+        return recommendations
+    
+    def _get_match_level(self, score: float) -> str:
+        """获取匹配等级"""
+        if score >= 85:
+            return "高度匹配"
+        elif score >= 70:
+            return "较好匹配"
+        elif score >= 55:
+            return "中等匹配"
+        else:
+            return "匹配度较低"
+
+
+class ResumeCriticAgent(BaseAgent):
+    """
+    增强的简历分析Agent - 使用Claude 4最新特性
+    Enhanced Resume Critic Agent - using Claude 4 latest features
+    负责简历解析、职位匹配分析和技能评估
+    Responsible for resume parsing, job matching analysis and skill assessment
+    """
+    
+    def __init__(self):
+        super().__init__(
+            name="ResumeCriticAgent",
+            description="专业的简历分析专家，使用Claude 4进行智能简历解析和职位匹配分析"
+        )
+    
+    def _setup_tools(self) -> None:
+        """设置增强的工具集"""
+        self.tools = [
+            ResumeParsingTool(),
+            SimilaritySearchTool(),
+            SkillAnalysisTool(),
+            JobMatchScoreTool()
+        ]
+    
+    def get_system_prompt(self) -> str:
+        """获取系统提示词"""
+        return """你是JobCatcher的智能简历分析专家，充分利用Claude 4的最新能力。
+
+## 🎯 核心职责
+1. **智能简历解析**：使用Claude 4文档处理能力，准确提取简历信息
+2. **精准匹配分析**：计算简历与职位的多维度匹配度
+3. **技能差距识别**：分析市场需求与个人技能的差距
+4. **职业发展建议**：提供个性化的职业规划建议
+
+## 🛠️ 工具使用策略
+- **parse_resume_document**: 解析上传的简历文件
+  - 支持PDF、DOC、DOCX格式
+  - 自动提取结构化信息
+  - 使用Claude 4原生文档处理能力
+
+- **similarity_search**: 语义搜索匹配职位
+  - 基于简历内容进行语义匹配
+  - 使用Azure AI Search向量检索
+  - 返回相关度排序的职位列表
+
+- **analyze_skill_gap**: 技能差距分析
+  - 分析市场技能需求趋势
+  - 识别个人技能优势和不足
+  - 提供学习资源建议
+
+- **calculate_job_match**: 职位匹配评分
+  - 多维度匹配度计算（技能、经验、教育）
+  - 详细的匹配报告
+  - 个性化改进建议
+
+## 📊 分析框架
+**技能匹配度 (40%)**：
+- 技术技能重叠度
+- 技能相关性和深度
+- 新兴技能价值
+
+**经验匹配度 (35%)**：
+- 工作年限匹配
+- 行业相关性
+- 职位级别对应
+
+**教育背景 (25%)**：
+- 学历要求匹配
+- 专业相关性
+- 持续学习能力
+
+## 🎨 输出要求
+始终提供：
+1. **量化评分**：0-100分的匹配度评分
+2. **定性分析**：优势、劣势、机会识别
+3. **可行建议**：具体的技能提升和职业发展建议
+4. **市场洞察**：技能热度和薪资趋势分析
+
+## 💡 智能特色
+- 利用Claude 4的原生推理能力进行深度分析
+- 提供人性化的职业建议和发展路径
+- 实时整合最新的行业技能需求趋势
+- 支持多语言简历处理和跨国职位匹配
+
+专注于为用户提供精准、实用的简历分析和职业发展指导！"""
+
+
+# Agent实例化
+# Agent instantiation
+resume_critic_agent = ResumeCriticAgent() 

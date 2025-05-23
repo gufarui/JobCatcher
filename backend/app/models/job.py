@@ -4,12 +4,13 @@ Job data model for JobCatcher
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from enum import Enum
 
 from sqlalchemy import String, DateTime, Boolean, Text, Integer, Float, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
+from pydantic import BaseModel, Field
 
 from app.core.database import Base
 
@@ -187,4 +188,88 @@ class Job(Base):
         """
         remote_keywords = ["remote", "远程", "home", "anywhere", "virtual"]
         location_lower = (self.location or "").lower()
-        return any(keyword in location_lower for keyword in remote_keywords) or self.job_type == JobType.REMOTE 
+        return any(keyword in location_lower for keyword in remote_keywords) or self.job_type == JobType.REMOTE
+
+# ================== Pydantic响应模型 / Pydantic Response Models ==================
+
+class JobSearchFilters(BaseModel):
+    """
+    职位搜索过滤器模型
+    Job search filters model
+    """
+    query: str = Field(..., description="搜索关键词 / Search keywords")
+    location: Optional[str] = Field(None, description="工作地点 / Work location")
+    salary_min: Optional[int] = Field(None, description="最低薪资 / Minimum salary")
+    salary_max: Optional[int] = Field(None, description="最高薪资 / Maximum salary")
+    job_type: Optional[str] = Field(None, description="职位类型 / Job type")
+    experience_level: Optional[str] = Field(None, description="经验要求 / Experience level")
+    remote_ok: Optional[bool] = Field(None, description="是否接受远程 / Remote work allowed")
+    page: int = Field(1, description="页码 / Page number")
+    page_size: int = Field(10, description="每页数量 / Items per page")
+    sort_by: Optional[str] = Field("relevance", description="排序方式 / Sort by")
+
+
+class JobDto(BaseModel):
+    """
+    职位DTO模型
+    Job DTO model
+    """
+    id: str = Field(..., description="职位ID / Job ID")
+    external_id: Optional[str] = Field(None, description="外部ID / External ID")
+    title: str = Field(..., description="职位标题 / Job title")
+    company: str = Field(..., description="公司名称 / Company name")
+    location: Optional[str] = Field(None, description="工作地点 / Work location")
+    description: Optional[str] = Field(None, description="职位描述 / Job description")
+    requirements: Optional[str] = Field(None, description="职位要求 / Job requirements")
+    benefits: Optional[str] = Field(None, description="福利待遇 / Benefits")
+    salary_min: Optional[int] = Field(None, description="最低薪资 / Minimum salary")
+    salary_max: Optional[int] = Field(None, description="最高薪资 / Maximum salary")
+    salary_currency: str = Field("EUR", description="薪资货币 / Salary currency")
+    salary_period: Optional[str] = Field(None, description="薪资周期 / Salary period")
+    job_type: Optional[str] = Field(None, description="职位类型 / Job type")
+    source: str = Field(..., description="数据来源 / Data source")
+    skills: Optional[dict] = Field(None, description="技能要求 / Skills required")
+    keywords: Optional[dict] = Field(None, description="关键词 / Keywords")
+    company_logo: Optional[str] = Field(None, description="公司Logo / Company logo")
+    company_size: Optional[str] = Field(None, description="公司规模 / Company size")
+    company_industry: Optional[str] = Field(None, description="公司行业 / Company industry")
+    application_url: Optional[str] = Field(None, description="申请链接 / Application URL")
+    application_email: Optional[str] = Field(None, description="申请邮箱 / Application email")
+    application_deadline: Optional[datetime] = Field(None, description="申请截止日期 / Application deadline")
+    is_active: bool = Field(True, description="是否有效 / Is active")
+    is_expired: bool = Field(False, description="是否过期 / Is expired")
+    quality_score: Optional[float] = Field(None, description="质量评分 / Quality score")
+    view_count: int = Field(0, description="浏览次数 / View count")
+    click_count: int = Field(0, description="点击次数 / Click count")
+    posted_at: Optional[datetime] = Field(None, description="发布时间 / Posted time")
+    scraped_at: Optional[datetime] = Field(None, description="抓取时间 / Scraped time")
+    updated_at: Optional[datetime] = Field(None, description="更新时间 / Updated time")
+    
+    # 匹配度相关字段（仅在有简历时计算）
+    # Match score related fields (calculated only when resume exists)
+    match_score: Optional[float] = Field(None, description="匹配度评分 / Match score")
+    
+    class Config:
+        from_attributes = True
+
+
+class JobResponse(BaseModel):
+    """
+    单个职位响应模型
+    Single job response model
+    """
+    job: JobDto = Field(..., description="职位信息 / Job information")
+    match_analysis: Optional[dict] = Field(None, description="匹配度分析 / Match analysis")
+
+
+class JobListResponse(BaseModel):
+    """
+    职位列表响应模型
+    Job list response model
+    """
+    jobs: List[JobDto] = Field(..., description="职位列表 / Job list")
+    total: int = Field(..., description="总数量 / Total count")
+    page: int = Field(..., description="当前页码 / Current page")
+    page_size: int = Field(..., description="每页数量 / Page size")
+    has_more: bool = Field(..., description="是否有更多 / Has more")
+    filters: Optional[JobSearchFilters] = Field(None, description="搜索过滤器 / Search filters") 

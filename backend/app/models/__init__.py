@@ -1,6 +1,6 @@
 """
-数据模型包初始化文件
-Models package initialization for JobCatcher
+数据模型包
+Data models package
 """
 
 from app.models.user import User
