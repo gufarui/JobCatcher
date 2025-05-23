@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库服务
+  # PostgreSQL database service
+  postgres:
+    image: postgres:15-alpine
+    container_name: jobcatcher-postgres
+    environment:
+      POSTGRES_DB: jobcatcher
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - jobcatcher-network
+
+  # Redis 缓存服务 (可选)
+  # Redis cache service (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: jobcatcher-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - jobcatcher-network
+
+  # 后端API服务
+  # Backend API service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jobcatcher-backend
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/jobcatcher
+      - REDIS_URL=redis://redis:6379
+      - ENVIRONMENT=development
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./frontend/dist:/app/static
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - jobcatcher-network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # 前端开发服务 (仅开发环境)
+  # Frontend development service (development only)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: jobcatcher-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    networks:
+      - jobcatcher-network
+    profiles:
+      - dev
+
+# 数据卷定义
+# Volume definitions
+volumes:
+  postgres_data:
+    driver: local
+
+# 网络定义
+# Network definitions
+networks:
+  jobcatcher-network:
+    driver: bridge 
